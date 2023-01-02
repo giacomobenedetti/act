@@ -1,5 +1,5 @@
 name: checks
-on: [pull_request, workflow_dispatch]
+on: [push, pull_request, workflow_dispatch]
 
 env:
   ACT_OWNER: ${{ github.repository_owner }}
@@ -12,7 +12,9 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: ../rwf/custom_action@z
+      - run: |
+          echo ${{ env.ACT_OWNER }}
+      #- uses: giacomobenedetti/security-test-ts@v1
+      - uses: actions/checkout@v3
         with:
-          name: ${{ env.ACT_OWNER }}
-     
+          fetch-depth: 0

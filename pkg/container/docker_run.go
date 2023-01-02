@@ -122,7 +122,7 @@ func (cr *containerReference) Create(capAdd []string, capDrop []string) common.E
 
 func (cr *containerReference) Start(attach bool) common.Executor {
 	return common.
-		NewInfoExecutor("%sdocker run image=%s platform=%s entrypoint=%+q cmd=%+q", logPrefix, cr.input.Image, cr.input.Platform, cr.input.Entrypoint, cr.input.Cmd).
+		NewInfoExecutor("%sdocker run --network=%s -e %+q image=%s platform=%s entrypoint=%+q cmd=%+q", logPrefix, cr.input.NetworkMode, cr.input.Env, cr.input.Image, cr.input.Platform, cr.input.Entrypoint, cr.input.Cmd).
 		Then(
 			common.NewPipelineExecutor(
 				cr.connect(),
