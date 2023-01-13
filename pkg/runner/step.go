@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 
@@ -58,6 +60,7 @@ func (s stepStage) getStepName(stepModel *model.Step) string {
 
 func runStepExecutor(step step, stage stepStage, executor common.Executor) common.Executor {
 	return func(ctx context.Context) error {
+		github := step.getGithubContext(ctx)
 		logger := common.Logger(ctx)
 		rc := step.getRunContext()
 		stepModel := step.getStepModel()
@@ -75,7 +78,15 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 		if err != nil {
 			return err
 		}
-
+		var jsonStr = []byte(fmt.Sprintf(`workflow=%s&job=%s`, github.Workflow, step.getRunContext().JobName))
+		req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
+		req.Close = true
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{}
+		_, errResp := client.Do(req)
+		if errResp != nil {
+			panic(errResp)
+		}
 		runStep, err := isStepEnabled(ctx, ifExpression, step, stage)
 		if err != nil {
 			rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusFailure
