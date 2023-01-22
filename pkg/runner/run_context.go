@@ -225,7 +225,9 @@ func (rc *RunContext) startJobContainer() common.Executor {
 		envList = append(envList, fmt.Sprintf("%s=%s", "RUNNER_OS", "Linux"))
 		envList = append(envList, fmt.Sprintf("%s=%s", "RUNNER_ARCH", container.RunnerArch(ctx)))
 		envList = append(envList, fmt.Sprintf("%s=%s", "RUNNER_TEMP", "/tmp"))
-		envList = append(envList, fmt.Sprintf("%s=%s", "https_proxy", "http://127.0.0.1:8090"))
+		// envList = append(envList, fmt.Sprintf("%s=%s", "https_proxy", "http://127.0.0.1:8090"))
+		envList = append(envList, fmt.Sprintf("%s=%s", "WORKFLOW", rc.Run.Workflow.Name))
+		envList = append(envList, fmt.Sprintf("%s=%s", "JOB", rc.JobName))
 
 		ext := container.LinuxContainerEnvironmentExtensions{}
 		binds, mounts := rc.GetBindsAndMounts()
@@ -241,7 +243,7 @@ func (rc *RunContext) startJobContainer() common.Executor {
 
 		rc.JobContainer = container.NewContainer(&container.NewContainerInput{
 			Cmd:         nil,
-			Entrypoint:  []string{"/usr/bin/tail", "-f", "/dev/null"},
+			Entrypoint:  nil,
 			WorkingDir:  ext.ToContainerPath(rc.Config.Workdir),
 			Image:       image,
 			Username:    username,
@@ -249,7 +251,7 @@ func (rc *RunContext) startJobContainer() common.Executor {
 			Name:        name,
 			Env:         envList,
 			Mounts:      mounts,
-			NetworkMode: "host",
+			NetworkMode: "bridge",
 			Binds:       binds,
 			Stdout:      logWriter,
 			Stderr:      logWriter,
@@ -334,6 +336,16 @@ func (rc *RunContext) interpolateOutputs() common.Executor {
 
 func (rc *RunContext) startContainer() common.Executor {
 	return func(ctx context.Context) error {
+		/*github := rc.getGithubContext(ctx)
+		var jsonStr = []byte(fmt.Sprintf(`stage=pre&workflow=%s&job=%s`, github.Workflow, rc.JobName))
+		req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
+		req.Close = true
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{}
+		_, errResp := client.Do(req)
+		if errResp != nil {
+			panic(errResp)
+		}*/
 		image := rc.platformImage(ctx)
 		if strings.EqualFold(image, "-self-hosted") {
 			return rc.startHostEnvironment()(ctx)
@@ -348,6 +360,16 @@ func (rc *RunContext) stopContainer() common.Executor {
 
 func (rc *RunContext) closeContainer() common.Executor {
 	return func(ctx context.Context) error {
+		/*github := rc.getGithubContext(ctx)
+		var jsonStr = []byte(fmt.Sprintf(`stage=post&workflow=%s&job=%s`, github.Workflow, rc.JobName))
+		req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
+		req.Close = true
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{}
+		_, errResp := client.Do(req)
+		if errResp != nil {
+			panic(errResp)
+		}*/
 		if rc.JobContainer != nil {
 			return rc.JobContainer.Close()(ctx)
 		}

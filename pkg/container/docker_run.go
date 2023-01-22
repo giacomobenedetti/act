@@ -201,7 +201,8 @@ func (cr *containerReference) UpdateFromPath(env *map[string]string) common.Exec
 
 func (cr *containerReference) Exec(command []string, env map[string]string, user, workdir string) common.Executor {
 	return common.NewPipelineExecutor(
-		common.NewInfoExecutor("%sdocker exec cmd=[%s] user=%s workdir=%s", logPrefix, strings.Join(command, " "), user, workdir),
+		//common.NewInfoExecutor("%sdocker exec cmd=[%s] user=%s workdir=%s", logPrefix, strings.Join(command, " "), user, workdir),
+		common.NewInfoExecutor("%sdocker exec -e %+q  %s user=%s workdir=%s", logPrefix, env, cr.id, strings.Join(command, " "), user, workdir),
 		cr.connect(),
 		cr.find(),
 		cr.exec(command, env, user, workdir),
@@ -646,6 +647,7 @@ func (cr *containerReference) exec(cmd []string, env map[string]string, user, wo
 			Tty:          isTerminal,
 			AttachStderr: true,
 			AttachStdout: true,
+			AttachStdin:  true,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create exec: %w", err)

@@ -89,6 +89,7 @@ func (runner *runnerImpl) NewPlanExecutor(plan *model.Plan) common.Executor {
 		stagePipeline = append(stagePipeline, func(ctx context.Context) error {
 			pipeline := make([]common.Executor, 0)
 			for r, run := range stage.Runs {
+
 				stageExecutor := make([]common.Executor, 0)
 				job := run.Job()
 
