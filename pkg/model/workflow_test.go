@@ -312,3 +312,37 @@ func TestStep_ShellCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestJob_SetPerms(t *testing.T) {
+	yaml := `
+name: job outputs definition
+
+jobs:
+  test1:
+    permissions:
+        issues: read
+    runs-on: ubuntu-latest
+    steps:
+      - id: test1_1
+        run: |
+          echo "::set-output name=a_key::some-a_value"
+          echo "::set-output name=b-key::some-b-value"
+    outputs:
+      some_a_key: ${{ steps.test1_1.outputs.a_key }}
+      some-b-key: ${{ steps.test1_1.outputs.b-key }}
+
+  test2:
+    runs-on: ubuntu-latest
+    needs:
+      - test1
+    steps:
+      - name: test2_1
+        run: |
+          echo "${{ needs.test1.outputs.some_a_key }}"
+          echo "${{ needs.test1.outputs.some-b-key }}"
+`
+
+	workflow, err := ReadWorkflow(strings.NewReader(yaml))
+	assert.NoError(t, err)
+
+}

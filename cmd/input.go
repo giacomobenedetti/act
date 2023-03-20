@@ -43,6 +43,7 @@ type Input struct {
 	remoteName                         string
 	replaceGheActionWithGithubCom      []string
 	replaceGheActionTokenWithGithubCom string
+	security                           bool
 }
 
 func (i *Input) resolve(path string) string {

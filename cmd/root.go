@@ -43,6 +43,7 @@ func Execute(ctx context.Context, version string) {
 	rootCmd.Flags().BoolP("graph", "g", false, "draw workflows")
 	rootCmd.Flags().StringP("job", "j", "", "run a specific job ID")
 	rootCmd.Flags().BoolP("bug-report", "", false, "Display system information for bug report")
+	rootCmd.Flags().BoolP("security", "S", false, "provide security assessment")
 
 	rootCmd.Flags().StringVar(&input.remoteName, "remote-name", "origin", "git remote name that will be used to retrieve url of git repo")
 	rootCmd.Flags().StringArrayVarP(&input.secrets, "secret", "s", []string{}, "secret to make available to actions with optional value (e.g. -s mysecret=foo or -s mysecret)")

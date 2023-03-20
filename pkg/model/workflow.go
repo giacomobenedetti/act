@@ -15,12 +15,13 @@ import (
 
 // Workflow is the structure of the files in .github/workflows
 type Workflow struct {
-	File     string
-	Name     string            `yaml:"name"`
-	RawOn    yaml.Node         `yaml:"on"`
-	Env      map[string]string `yaml:"env"`
-	Jobs     map[string]*Job   `yaml:"jobs"`
-	Defaults Defaults          `yaml:"defaults"`
+	File        string
+	Name        string            `yaml:"name"`
+	Permissions map[string]string `yaml:"permissions"`
+	RawOn       yaml.Node         `yaml:"on"`
+	Env         map[string]string `yaml:"env"`
+	Jobs        map[string]*Job   `yaml:"jobs"`
+	Defaults    Defaults          `yaml:"defaults"`
 }
 
 // On events for the workflow
@@ -105,6 +106,7 @@ type Job struct {
 	Name           string                    `yaml:"name"`
 	RawNeeds       yaml.Node                 `yaml:"needs"`
 	RawRunsOn      yaml.Node                 `yaml:"runs-on"`
+	Permissions    map[string]string         `yaml:"permissions"`
 	Env            yaml.Node                 `yaml:"env"`
 	If             yaml.Node                 `yaml:"if"`
 	Steps          []*Step                   `yaml:"steps"`
@@ -244,6 +246,11 @@ func environment(yml yaml.Node) map[string]string {
 // Environments returns string-based key=value map for a job
 func (j *Job) Environment() map[string]string {
 	return environment(j.Env)
+}
+
+func (j *Job) SetPerms(perms map[string]string) map[string]string {
+	j.Permissions = perms
+	return j.Permissions
 }
 
 // Matrix decodes RawMatrix YAML node

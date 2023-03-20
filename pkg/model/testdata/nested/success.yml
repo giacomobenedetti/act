@@ -1,6 +1,9 @@
 name: Hello World Workflow
 on: push
 
+permissions:
+  issues: read
+  
 jobs:
   hello-world:
     name: Hello World Job

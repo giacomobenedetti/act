@@ -19,6 +19,7 @@ type WorkflowPlanner interface {
 	PlanJob(jobName string) *Plan
 	PlanAll() *Plan
 	GetEvents() []string
+	SetPerms(perms map[string]string)
 }
 
 // Plan contains a list of stages to run in series
@@ -240,6 +241,13 @@ func (wp *workflowPlanner) GetEvents() []string {
 	})
 
 	return events
+}
+
+// SetPerms sets Permissions of workflows to perms
+func (wp *workflowPlanner) SetPerms(perms map[string]string) {
+	for _, w := range wp.workflows {
+		w.Permissions = perms
+	}
 }
 
 // MaxRunNameLen determines the max name length of all jobs
