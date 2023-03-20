@@ -39,17 +39,3 @@ func TestPlanner(t *testing.T) {
 		}
 	}
 }
-
-func TestWorkflowPlanner_SetPerms(t *testing.T) {
-	log.SetLevel(log.DebugLevel)
-
-	workdir, err := filepath.Abs("testdata")
-	assert.NoError(t, err, workdir)
-	fullWorkflowPath := filepath.Join(workdir, "nested/success.yml")
-
-	plan, err := NewWorkflowPlanner(fullWorkflowPath, false)
-
-	newPerms := make(map[string]string)
-	newPerms["issues"] = "write"
-	plan.SetPerms(newPerms)
-}

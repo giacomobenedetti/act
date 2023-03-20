@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"os"
 	"path"
 	"strings"
 
@@ -44,32 +46,55 @@ func (s stepStage) String() string {
 	return "Unknown"
 }
 
-func (s stepStage) getStepName(stepModel *model.Step) string {
-	switch s {
-	case stepStagePre:
-		return fmt.Sprintf("pre-%s", stepModel.ID)
-	case stepStageMain:
-		return stepModel.ID
-	case stepStagePost:
-		return fmt.Sprintf("post-%s", stepModel.ID)
+func processRunnerEnvFileCommand(ctx context.Context, fileName string, rc *RunContext, setter func(context.Context, map[string]string, string)) error {
+	env := map[string]string{}
+	err := rc.JobContainer.UpdateFromEnv(path.Join(rc.JobContainer.GetActPath(), fileName), &env)(ctx)
+	if err != nil {
+		return err
 	}
-	return "unknown"
+	for k, v := range env {
+		setter(ctx, map[string]string{"name": k}, v)
+	}
+	return nil
 }
 
 func runStepExecutor(step step, stage stepStage, executor common.Executor) common.Executor {
 	return func(ctx context.Context) error {
-		// github := step.getGithubContext(ctx)
+		f, errFile := os.OpenFile("syncfile", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
+		defer f.Close()
 		logger := common.Logger(ctx)
 		rc := step.getRunContext()
 		stepModel := step.getStepModel()
 
 		ifExpression := step.getIfExpression(ctx, stage)
-		rc.CurrentStep = stage.getStepName(stepModel)
 
-		rc.StepResults[rc.CurrentStep] = &model.StepResult{
+		log.Infof("\"%s - step %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID)
+		f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID)))
+		if rc.CurrentStep != "" {
+			if ifExpression != "" {
+				f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID)))
+				f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+				f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", step.getRunContext().Run.JobID, rc.CurrentStep, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+			}
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, rc.CurrentStep, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+		} else {
+			if ifExpression != "" {
+				f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - cond %s\";\n", step.getRunContext().Run.JobID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+				f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+			} else {
+				f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+			}
+		}
+		rc.CurrentStep = stepModel.ID
+
+		stepResult := &model.StepResult{
 			Outcome:    model.StepStatusSuccess,
 			Conclusion: model.StepStatusSuccess,
 			Outputs:    make(map[string]string),
+		}
+		if stage == stepStageMain {
+
+			rc.StepResults[rc.CurrentStep] = stepResult
 		}
 
 		err := setupEnv(ctx, step)
@@ -77,53 +102,33 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			return err
 		}
 
-		/*if stage == stepStageMain {
-			var jsonStr = []byte(fmt.Sprintf(`stage=main&workflow=%s&job=%s`, github.Workflow, step.getRunContext().JobName))
-			req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
-			req.Close = true
-			req.Header.Set("Content-Type", "application/json")
-			client := &http.Client{}
-			_, errResp := client.Do(req)
-			if errResp != nil {
-				panic(errResp)
-			}
-		} else if stage == stepStagePost {
-			var jsonStr = []byte(fmt.Sprintf(`stage=post&workflow=%s&job=%s`, github.Workflow, step.getRunContext().JobName))
-			req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
-			req.Close = true
-			req.Header.Set("Content-Type", "application/json")
-			client := &http.Client{}
-			_, errResp := client.Do(req)
-			if errResp != nil {
-				panic(errResp)
-			}
-		}*/
-		/*if stage == stepStageMain {
-			var jsonStr = []byte(fmt.Sprintf(`workflow=%s&job=%s`, github.Workflow, step.getRunContext().JobName))
-			req, _ := http.NewRequest("POST", "http://localhost:9090/", bytes.NewBuffer(jsonStr))
-			req.Close = true
-			req.Header.Set("Content-Type", "application/json")
-			client := &http.Client{}
-			_, errResp := client.Do(req)
-			if errResp != nil {
-				panic(errResp)
-			}
-		}*/
-
 		runStep, err := isStepEnabled(ctx, ifExpression, step, stage)
+
+		//if step.getStepModel().If.Value != "" {
+		//	log.Infof("\"%s - cond %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID)
+		//	log.Infof("\"%s - cond %s\" -> \"%s - step %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)
+		//	f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID)))
+		//	f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
+		//}
+
+		if errFile != nil {
+			fmt.Errorf("  \u274C  Error in writing job condition to file \"if: %s\" (%s)", step.getStepModel().If, errFile)
+		}
 		if err != nil {
-			rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusFailure
-			rc.StepResults[rc.CurrentStep].Outcome = model.StepStatusFailure
+			stepResult.Conclusion = model.StepStatusFailure
+			stepResult.Outcome = model.StepStatusFailure
+			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return err
 		}
 
 		if !runStep {
-			rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusSkipped
-			rc.StepResults[rc.CurrentStep].Outcome = model.StepStatusSkipped
-			logger.WithField("stepResult", rc.StepResults[rc.CurrentStep].Outcome).Debugf("Skipping step '%s' due to '%s'", stepModel, ifExpression)
+			stepResult.Conclusion = model.StepStatusSkipped
+			stepResult.Outcome = model.StepStatusSkipped
+			logger.WithField("stepResult", stepResult.Outcome).Debugf("Skipping step '%s' due to '%s'", stepModel, ifExpression)
+			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return nil
 		}
-
+		//f.Write([]byte(fmt.Sprintf("; achieved\n")))
 		stepString := rc.ExprEval.Interpolate(ctx, stepModel.String())
 		if strings.Contains(stepString, "::add-mask::") {
 			stepString = "add-mask command"
@@ -132,58 +137,79 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 
 		// Prepare and clean Runner File Commands
 		actPath := rc.JobContainer.GetActPath()
+
 		outputFileCommand := path.Join("workflow", "outputcmd.txt")
-		stateFileCommand := path.Join("workflow", "statecmd.txt")
 		(*step.getEnv())["GITHUB_OUTPUT"] = path.Join(actPath, outputFileCommand)
+
+		stateFileCommand := path.Join("workflow", "statecmd.txt")
 		(*step.getEnv())["GITHUB_STATE"] = path.Join(actPath, stateFileCommand)
+
+		pathFileCommand := path.Join("workflow", "pathcmd.txt")
+		(*step.getEnv())["GITHUB_PATH"] = path.Join(actPath, pathFileCommand)
+
+		envFileCommand := path.Join("workflow", "envs.txt")
+		(*step.getEnv())["GITHUB_ENV"] = path.Join(actPath, envFileCommand)
+
+		summaryFileCommand := path.Join("workflow", "SUMMARY.md")
+		(*step.getEnv())["GITHUB_STEP_SUMMARY"] = path.Join(actPath, summaryFileCommand)
+
 		_ = rc.JobContainer.Copy(actPath, &container.FileEntry{
 			Name: outputFileCommand,
-			Mode: 0666,
+			Mode: 0o666,
 		}, &container.FileEntry{
 			Name: stateFileCommand,
+			Mode: 0o666,
+		}, &container.FileEntry{
+			Name: pathFileCommand,
+			Mode: 0o666,
+		}, &container.FileEntry{
+			Name: envFileCommand,
 			Mode: 0666,
+		}, &container.FileEntry{
+			Name: summaryFileCommand,
+			Mode: 0o666,
 		})(ctx)
 
 		err = executor(ctx)
 
 		if err == nil {
-			logger.WithField("stepResult", rc.StepResults[rc.CurrentStep].Outcome).Infof("  \u2705  Success - %s %s", stage, stepString)
+			logger.WithField("stepResult", stepResult.Outcome).Infof("  \u2705  Success - %s %s", stage, stepString)
 		} else {
-			rc.StepResults[rc.CurrentStep].Outcome = model.StepStatusFailure
+			stepResult.Outcome = model.StepStatusFailure
 
 			continueOnError, parseErr := isContinueOnError(ctx, stepModel.RawContinueOnError, step, stage)
 			if parseErr != nil {
-				rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusFailure
+				stepResult.Conclusion = model.StepStatusFailure
 				return parseErr
 			}
 
 			if continueOnError {
 				logger.Infof("Failed but continue next step")
 				err = nil
-				rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusSuccess
+				stepResult.Conclusion = model.StepStatusSuccess
 			} else {
-				rc.StepResults[rc.CurrentStep].Conclusion = model.StepStatusFailure
+				stepResult.Conclusion = model.StepStatusFailure
 			}
 
-			logger.WithField("stepResult", rc.StepResults[rc.CurrentStep].Outcome).Errorf("  \u274C  Failure - %s %s", stage, stepString)
+			logger.WithField("stepResult", stepResult.Outcome).Errorf("  \u274C  Failure - %s %s", stage, stepString)
 		}
 		// Process Runner File Commands
 		orgerr := err
-		state := map[string]string{}
-		err = rc.JobContainer.UpdateFromEnv(path.Join(actPath, stateFileCommand), &state)(ctx)
+		err = processRunnerEnvFileCommand(ctx, envFileCommand, rc, rc.setEnv)
 		if err != nil {
 			return err
 		}
-		for k, v := range state {
-			rc.saveState(ctx, map[string]string{"name": k}, v)
-		}
-		output := map[string]string{}
-		err = rc.JobContainer.UpdateFromEnv(path.Join(actPath, outputFileCommand), &output)(ctx)
+		err = processRunnerEnvFileCommand(ctx, stateFileCommand, rc, rc.saveState)
 		if err != nil {
 			return err
 		}
-		for k, v := range output {
-			rc.setOutput(ctx, map[string]string{"name": k}, v)
+		err = processRunnerEnvFileCommand(ctx, outputFileCommand, rc, rc.setOutput)
+		if err != nil {
+			return err
+		}
+		err = rc.UpdateExtraPath(ctx, path.Join(actPath, pathFileCommand))
+		if err != nil {
+			return err
 		}
 		if orgerr != nil {
 			return orgerr
@@ -196,24 +222,22 @@ func setupEnv(ctx context.Context, step step) error {
 	rc := step.getRunContext()
 
 	mergeEnv(ctx, step)
-	err := rc.JobContainer.UpdateFromImageEnv(step.getEnv())(ctx)
-	if err != nil {
-		return err
-	}
-	err = rc.JobContainer.UpdateFromEnv((*step.getEnv())["GITHUB_ENV"], step.getEnv())(ctx)
-	if err != nil {
-		return err
-	}
-	err = rc.JobContainer.UpdateFromPath(step.getEnv())(ctx)
-	if err != nil {
-		return err
-	}
 	// merge step env last, since it should not be overwritten
 	mergeIntoMap(step.getEnv(), step.getStepModel().GetEnv())
 
 	exprEval := rc.NewExpressionEvaluator(ctx)
 	for k, v := range *step.getEnv() {
-		(*step.getEnv())[k] = exprEval.Interpolate(ctx, v)
+		if !strings.HasPrefix(k, "INPUT_") {
+			(*step.getEnv())[k] = exprEval.Interpolate(ctx, v)
+		}
+	}
+	// after we have an evaluated step context, update the expressions evaluator with a new env context
+	// you can use step level env in the with property of a uses construct
+	exprEval = rc.NewExpressionEvaluatorWithEnv(ctx, *step.getEnv())
+	for k, v := range *step.getEnv() {
+		if strings.HasPrefix(k, "INPUT_") {
+			(*step.getEnv())[k] = exprEval.Interpolate(ctx, v)
+		}
 	}
 
 	common.Logger(ctx).Debugf("setupEnv => %v", *step.getEnv())
@@ -233,14 +257,6 @@ func mergeEnv(ctx context.Context, step step) {
 		mergeIntoMap(env, rc.GetEnv())
 	}
 
-	path := rc.JobContainer.GetPathVariableName()
-	if (*env)[path] == "" {
-		(*env)[path] = rc.JobContainer.DefaultPathVariable()
-	}
-	if rc.ExtraPath != nil && len(rc.ExtraPath) > 0 {
-		(*env)[path] = rc.JobContainer.JoinPathVariable(append(rc.ExtraPath, (*env)[path])...)
-	}
-
 	rc.withGithubEnv(ctx, step.getGithubContext(ctx), *env)
 }
 
@@ -256,6 +272,7 @@ func isStepEnabled(ctx context.Context, expr string, step step, stage stepStage)
 
 	runStep, err := EvalBool(ctx, rc.NewStepExpressionEvaluator(ctx, step), expr, defaultStatusCheck)
 	if err != nil {
+
 		return false, fmt.Errorf("  \u274C  Error in if-expression: \"if: %s\" (%s)", expr, err)
 	}
 

@@ -15,13 +15,12 @@ import (
 
 // Workflow is the structure of the files in .github/workflows
 type Workflow struct {
-	File        string
-	Name        string            `yaml:"name"`
-	Permissions map[string]string `yaml:"permissions"`
-	RawOn       yaml.Node         `yaml:"on"`
-	Env         map[string]string `yaml:"env"`
-	Jobs        map[string]*Job   `yaml:"jobs"`
-	Defaults    Defaults          `yaml:"defaults"`
+	File     string
+	Name     string            `yaml:"name"`
+	RawOn    yaml.Node         `yaml:"on"`
+	Env      map[string]string `yaml:"env"`
+	Jobs     map[string]*Job   `yaml:"jobs"`
+	Defaults Defaults          `yaml:"defaults"`
 }
 
 // On events for the workflow
@@ -101,12 +100,53 @@ func (w *Workflow) WorkflowDispatchConfig() *WorkflowDispatch {
 	return &config
 }
 
+type WorkflowCallInput struct {
+	Description string `yaml:"description"`
+	Required    bool   `yaml:"required"`
+	Default     string `yaml:"default"`
+	Type        string `yaml:"type"`
+}
+
+type WorkflowCallOutput struct {
+	Description string `yaml:"description"`
+	Value       string `yaml:"value"`
+}
+
+type WorkflowCall struct {
+	Inputs  map[string]WorkflowCallInput  `yaml:"inputs"`
+	Outputs map[string]WorkflowCallOutput `yaml:"outputs"`
+}
+
+type WorkflowCallResult struct {
+	Outputs map[string]string
+}
+
+func (w *Workflow) WorkflowCallConfig() *WorkflowCall {
+	if w.RawOn.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	var val map[string]yaml.Node
+	err := w.RawOn.Decode(&val)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var config WorkflowCall
+	node := val["workflow_call"]
+	err = node.Decode(&config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &config
+}
+
 // Job is the structure of one job in a workflow
 type Job struct {
 	Name           string                    `yaml:"name"`
 	RawNeeds       yaml.Node                 `yaml:"needs"`
 	RawRunsOn      yaml.Node                 `yaml:"runs-on"`
-	Permissions    map[string]string         `yaml:"permissions"`
 	Env            yaml.Node                 `yaml:"env"`
 	If             yaml.Node                 `yaml:"if"`
 	Steps          []*Step                   `yaml:"steps"`
@@ -117,6 +157,8 @@ type Job struct {
 	Defaults       Defaults                  `yaml:"defaults"`
 	Outputs        map[string]string         `yaml:"outputs"`
 	Uses           string                    `yaml:"uses"`
+	With           map[string]interface{}    `yaml:"with"`
+	RawSecrets     yaml.Node                 `yaml:"secrets"`
 	Result         string
 }
 
@@ -169,6 +211,34 @@ func (s Strategy) GetFailFast() bool {
 		}
 	}
 	return failFast
+}
+
+func (j *Job) InheritSecrets() bool {
+	if j.RawSecrets.Kind != yaml.ScalarNode {
+		return false
+	}
+
+	var val string
+	err := j.RawSecrets.Decode(&val)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return val == "inherit"
+}
+
+func (j *Job) Secrets() map[string]string {
+	if j.RawSecrets.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	var val map[string]string
+	err := j.RawSecrets.Decode(&val)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return val
 }
 
 // Container details for the job
@@ -246,11 +316,6 @@ func environment(yml yaml.Node) map[string]string {
 // Environments returns string-based key=value map for a job
 func (j *Job) Environment() map[string]string {
 	return environment(j.Env)
-}
-
-func (j *Job) SetPerms(perms map[string]string) map[string]string {
-	j.Permissions = perms
-	return j.Permissions
 }
 
 // Matrix decodes RawMatrix YAML node
@@ -465,16 +530,8 @@ func (s *Step) String() string {
 }
 
 // Environments returns string-based key=value map for a step
-// Note: all keys are uppercase
 func (s *Step) Environment() map[string]string {
-	env := environment(s.Env)
-
-	for k, v := range env {
-		delete(env, k)
-		env[strings.ToUpper(k)] = v
-	}
-
-	return env
+	return environment(s.Env)
 }
 
 // GetEnv gets the env for a step
@@ -502,7 +559,7 @@ func (s *Step) ShellCommand() string {
 	case "python":
 		shellCommand = "python {0}"
 	case "sh":
-		shellCommand = "sh -e -c {0}"
+		shellCommand = "sh -e {0}"
 	case "cmd":
 		shellCommand = "%ComSpec% /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\""
 	case "powershell":
