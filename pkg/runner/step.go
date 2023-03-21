@@ -65,26 +65,17 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 		logger := common.Logger(ctx)
 		rc := step.getRunContext()
 		stepModel := step.getStepModel()
+		previousStep := func(step *RunContext) *model.Step {
+			var prevStep *model.Step
+			for _, ps := range step.steps() {
+				if ps.ID == rc.CurrentStep {
+					prevStep = ps
+				}
+			}
+			return prevStep
+		}(rc)
 
 		ifExpression := step.getIfExpression(ctx, stage)
-
-		log.Infof("\"%s - step %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID)
-		f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID)))
-		if rc.CurrentStep != "" {
-			if ifExpression != "" {
-				f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID)))
-				f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-				f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", step.getRunContext().Run.JobID, rc.CurrentStep, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-			}
-			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, rc.CurrentStep, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-		} else {
-			if ifExpression != "" {
-				f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - cond %s\";\n", step.getRunContext().Run.JobID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-				f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-			} else {
-				f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - step %s\";\n", step.getRunContext().Run.JobID, step.getRunContext().Run.JobID, step.getStepModel().ID)))
-			}
-		}
 		rc.CurrentStep = stepModel.ID
 
 		stepResult := &model.StepResult{
@@ -93,7 +84,37 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			Outputs:    make(map[string]string),
 		}
 		if stage == stepStageMain {
+			log.Infof("\"%s - step %s\"", rc.Run.JobID, stepModel.ID)
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", rc.Run.JobID, stepModel.ID)))
+			if previousStep != nil {
+				if stepModel.If.Value != "" {
+					f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, stepModel.ID, rc.Run.JobID, stepModel.ID)))
+					if previousStep.If.Value != "" {
+						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					} else {
+						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					}
+				} else {
+					if previousStep.If.Value != "" {
+						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					} else {
+						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					}
+				}
+			} else {
+				if stepModel.If.Value != "" {
+					if rc.Run.Job().If.Value != "" {
+						f.Write([]byte(fmt.Sprintf("\"cond - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
+					} else {
+						f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
+					}
+					f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, stepModel.ID, rc.Run.JobID, stepModel.ID)))
+				} else {
+					f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - step %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
 
+				}
+			}
 			rc.StepResults[rc.CurrentStep] = stepResult
 		}
 
@@ -117,6 +138,7 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 		if err != nil {
 			stepResult.Conclusion = model.StepStatusFailure
 			stepResult.Outcome = model.StepStatusFailure
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"red\"];\n", rc.Run.JobID, stepModel.ID)))
 			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return err
 		}
@@ -125,6 +147,7 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			stepResult.Conclusion = model.StepStatusSkipped
 			stepResult.Outcome = model.StepStatusSkipped
 			logger.WithField("stepResult", stepResult.Outcome).Debugf("Skipping step '%s' due to '%s'", stepModel, ifExpression)
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"orange\"];\n", rc.Run.JobID, stepModel.ID)))
 			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return nil
 		}

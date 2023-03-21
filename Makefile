@@ -111,3 +111,15 @@ snapshot:
 		--snapshot
 
 .PHONY: clean all
+
+
+getcfg:
+	rm -f syncfile
+	go build .
+	#./act -W /Users/giacomo/git/ActionsCFG/workflow.yaml
+	./act -W workflow2.yaml
+	#./act -W publish.yaml
+cfg:
+	sed -i "" '1s/^/strict digraph {\n /' syncfile
+	echo "}" >> syncfile
+	dot -Tpng syncfile -o cfg.png

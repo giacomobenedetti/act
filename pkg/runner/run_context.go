@@ -484,13 +484,14 @@ func (rc *RunContext) isEnabled(ctx context.Context) (bool, error) {
 	l := common.Logger(ctx)
 	f, errFile := os.OpenFile("syncfile", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
 	defer f.Close()
-	f.Write([]byte(fmt.Sprintf("\"Job - %s\"\n", rc.Run.JobID)))
+
 	runJob, err := EvalBool(ctx, rc.ExprEval, job.If.Value, exprparser.DefaultStatusCheckSuccess)
 	if job.If.Value != "" {
 		log.Infof("[CFG] \"cond -  %s\"\n", rc.Run.JobID)
-		log.Infof("[CFG] \"job - %s\" -> \"cond -  %s\"\n", rc.Run.JobID, rc.Run.JobID)
-		f.Write([]byte(fmt.Sprintf("\"cond -  %s\"\n", rc.Run.JobID)))
-		f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"cond -  %s\"\n", rc.Run.JobID, rc.Run.JobID)))
+		log.Infof("[CFG] \"cond - %s\" -> \"job -  %s\"\n", rc.Run.JobID, rc.Run.JobID)
+		f.Write([]byte(fmt.Sprintf("\"cond - %s\"\n", rc.Run.JobID)))
+		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"cond - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
+
 	}
 
 	if errFile != nil {
@@ -525,6 +526,12 @@ func (rc *RunContext) isEnabled(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	//f.Write([]byte(fmt.Sprintf("; achieved\n")))
+	f.Write([]byte(fmt.Sprintf("\"job - %s\"\n", rc.Run.JobID)))
+	if job.If.Value != "" {
+		f.Write([]byte(fmt.Sprintf("\"cond - %s\" -> \"job - %s\"\n", rc.Run.JobID, rc.Run.JobID)))
+	} else {
+		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"job - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
+	}
 	return true, nil
 }
 
