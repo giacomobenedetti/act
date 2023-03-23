@@ -144,11 +144,12 @@ func (w *Workflow) WorkflowCallConfig() *WorkflowCall {
 
 // Job is the structure of one job in a workflow
 type Job struct {
-	Name           string                    `yaml:"name"`
-	RawNeeds       yaml.Node                 `yaml:"needs"`
-	RawRunsOn      yaml.Node                 `yaml:"runs-on"`
-	Env            yaml.Node                 `yaml:"env"`
-	If             yaml.Node                 `yaml:"if"`
+	Name           string    `yaml:"name"`
+	RawNeeds       yaml.Node `yaml:"needs"`
+	RawRunsOn      yaml.Node `yaml:"runs-on"`
+	Env            yaml.Node `yaml:"env"`
+	If             yaml.Node `yaml:"if"`
+	CondInserted   bool
 	Steps          []*Step                   `yaml:"steps"`
 	TimeoutMinutes string                    `yaml:"timeout-minutes"`
 	Services       map[string]*ContainerSpec `yaml:"services"`
@@ -515,6 +516,7 @@ type Step struct {
 	With               map[string]string `yaml:"with"`
 	RawContinueOnError string            `yaml:"continue-on-error"`
 	TimeoutMinutes     string            `yaml:"timeout-minutes"`
+	Prev               *Step
 }
 
 // String gets the name of step
@@ -654,6 +656,7 @@ func (w *Workflow) GetJob(jobID string) *Job {
 				j.Name = id
 			}
 			if j.If.Value == "" {
+				j.CondInserted = true
 				j.If.Value = "success()"
 			}
 			return j

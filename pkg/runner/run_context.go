@@ -486,12 +486,14 @@ func (rc *RunContext) isEnabled(ctx context.Context) (bool, error) {
 	defer f.Close()
 
 	runJob, err := EvalBool(ctx, rc.ExprEval, job.If.Value, exprparser.DefaultStatusCheckSuccess)
-	if job.If.Value != "" {
+	if job.If.Value != "" && !job.CondInserted {
 		log.Infof("[CFG] \"cond -  %s\"\n", rc.Run.JobID)
 		log.Infof("[CFG] \"cond - %s\" -> \"job -  %s\"\n", rc.Run.JobID, rc.Run.JobID)
 		f.Write([]byte(fmt.Sprintf("\"cond - %s\"\n", rc.Run.JobID)))
+		log.Infof(fmt.Sprintf("[CFG] cond: %s\n", job))
 		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"cond - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
-
+	} else {
+		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"job - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
 	}
 
 	if errFile != nil {
@@ -527,7 +529,7 @@ func (rc *RunContext) isEnabled(ctx context.Context) (bool, error) {
 	}
 	//f.Write([]byte(fmt.Sprintf("; achieved\n")))
 	f.Write([]byte(fmt.Sprintf("\"job - %s\"\n", rc.Run.JobID)))
-	if job.If.Value != "" {
+	if job.If.Value != "" && !job.CondInserted {
 		f.Write([]byte(fmt.Sprintf("\"cond - %s\" -> \"job - %s\"\n", rc.Run.JobID, rc.Run.JobID)))
 	} else {
 		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"job - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))

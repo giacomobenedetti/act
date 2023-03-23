@@ -75,6 +75,8 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			return prevStep
 		}(rc)
 
+		step.getStepModel().Prev = previousStep
+
 		ifExpression := step.getIfExpression(ctx, stage)
 		rc.CurrentStep = stepModel.ID
 
@@ -84,6 +86,18 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			Outputs:    make(map[string]string),
 		}
 		if stage == stepStageMain {
+
+			rc.StepResults[rc.CurrentStep] = stepResult
+		}
+
+		err := setupEnv(ctx, step)
+		if err != nil {
+			return err
+		}
+
+		runStep, err := isStepEnabled(ctx, ifExpression, step, stage)
+		// if the step is enabled to run the corresponding CFG node and conditions are displayed
+		if runStep {
 			log.Infof("\"%s - step %s\"", rc.Run.JobID, stepModel.ID)
 			f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", rc.Run.JobID, stepModel.ID)))
 			if previousStep != nil {
@@ -98,13 +112,12 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 				} else {
 					if previousStep.If.Value != "" {
 						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
-					} else {
-						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
 					}
+					f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
 				}
 			} else {
 				if stepModel.If.Value != "" {
-					if rc.Run.Job().If.Value != "" {
+					if rc.Run.Job().If.Value != "" && !rc.Run.Job().CondInserted {
 						f.Write([]byte(fmt.Sprintf("\"cond - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
 					} else {
 						f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
@@ -115,16 +128,7 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 
 				}
 			}
-			rc.StepResults[rc.CurrentStep] = stepResult
 		}
-
-		err := setupEnv(ctx, step)
-		if err != nil {
-			return err
-		}
-
-		runStep, err := isStepEnabled(ctx, ifExpression, step, stage)
-
 		//if step.getStepModel().If.Value != "" {
 		//	log.Infof("\"%s - cond %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID)
 		//	log.Infof("\"%s - cond %s\" -> \"%s - step %s\"", step.getRunContext().Run.JobID, step.getStepModel().ID, step.getRunContext().Run.JobID, step.getStepModel().ID)
@@ -138,7 +142,7 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 		if err != nil {
 			stepResult.Conclusion = model.StepStatusFailure
 			stepResult.Outcome = model.StepStatusFailure
-			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"red\"];\n", rc.Run.JobID, stepModel.ID)))
+			//f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"red\"];\n", rc.Run.JobID, stepModel.ID)))
 			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return err
 		}
@@ -147,7 +151,7 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			stepResult.Conclusion = model.StepStatusSkipped
 			stepResult.Outcome = model.StepStatusSkipped
 			logger.WithField("stepResult", stepResult.Outcome).Debugf("Skipping step '%s' due to '%s'", stepModel, ifExpression)
-			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"orange\"];\n", rc.Run.JobID, stepModel.ID)))
+			//f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [color=\"red\"];\n", rc.Run.JobID, stepModel.ID)))
 			//f.Write([]byte(fmt.Sprintf("; failed\n")))
 			return nil
 		}
