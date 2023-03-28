@@ -117,7 +117,7 @@ getcfg:
 	rm -f syncfile
 	go build .
 	#./act -W /Users/giacomo/git/ActionsCFG/workflow.yaml
-	./act -W workflow2.yaml
+	./act -P ubuntu-latest=act_bashcov:latest -P ubuntu-20.04=act_bashcov:20.04 -W $(WFPATH)
 	#./act -W publish.yaml
 cfg:
 	sed -i "" '1s/^/strict digraph {\n /' syncfile

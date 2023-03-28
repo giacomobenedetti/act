@@ -556,6 +556,7 @@ func (s *Step) ShellCommand() string {
 	switch s.Shell {
 	case "", "bash":
 		shellCommand = "bash --noprofile --norc -e -o pipefail {0}"
+		//shellCommand = "cd /var/run/act/workflow && runuser -u bashcov bashcov {0}"
 	case "pwsh":
 		shellCommand = "pwsh -command . '{0}'"
 	case "python":

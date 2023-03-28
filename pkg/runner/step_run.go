@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/kballard/go-shellquote"
@@ -32,6 +34,44 @@ func (sr *stepRun) main() common.Executor {
 		sr.setupShellCommandExecutor(),
 		func(ctx context.Context) error {
 			sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
+			cmd, _ := shellquote.Split(fmt.Sprintf("chmod 777 %s", sr.getRunContext().JobContainer.GetActPath()))
+			return sr.getRunContext().JobContainer.Exec(cmd, sr.env, "", sr.Step.WorkingDirectory)(ctx)
+		},
+		func(ctx context.Context) error {
+			sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
+			name := getScriptName(sr.RunContext, sr.getStepModel())
+			//scriptPath := fmt.Sprintf("%s/%s", sr.getRunContext().JobContainer.GetActPath(), name)
+			cmd, _ := shellquote.Split(fmt.Sprintf("runuser -u bashcov bashcov %s", name))
+			return sr.getRunContext().JobContainer.Exec(cmd, sr.env, "", sr.getRunContext().JobContainer.GetActPath())(ctx)
+		},
+		//func(ctx context.Context) error {
+		//	sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
+		//	rc := sr.getRunContext()
+		//	//name := getScriptName(sr.RunContext, sr.getStepModel())
+		//	//scriptPath := fmt.Sprintf("%s/%s", sr.getRunContext().JobContainer.GetActPath(), name)
+		//	//cmd, _ := shellquote.Split(fmt.Sprintf("runuser -u bashcov bashcov %s", name))
+		//	return rc.JobContainer.CopyDir("", fmt.Sprintf("%s/coverage", rc.JobContainer.GetActPath()), false)
+		//},
+
+		func(ctx context.Context) error {
+			sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
+			name := getScriptName(sr.RunContext, sr.getStepModel())
+			//scriptPath := fmt.Sprintf("%s/%s", sr.getRunContext().JobContainer.GetActPath(), name)
+			cmd, _ := shellquote.Split(fmt.Sprintf("runuser -u bashcov bashcov %s", name))
+			return sr.getRunContext().JobContainer.Exec(cmd, sr.env, "", sr.getRunContext().JobContainer.GetActPath())(ctx)
+		},
+		//func(ctx context.Context) error {
+		//	sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
+		//	//name := getScriptName(sr.RunContext, sr.getStepModel())
+		//	//scriptPath := fmt.Sprintf("%s/%s", sr.getRunContext().JobContainer.GetActPath(), name)
+		//	rc := sr.getRunContext()
+		//	cmd := exec.Command(fmt.Sprintf("docker cp %s:%s/coverage ./coverage", rc.jobContainerName(), rc.JobContainer.GetActPath()))
+		//	_ := cmd.Run()
+		//	return cmd
+		//},
+
+		func(ctx context.Context) error {
+			sr.getRunContext().ApplyExtraPath(ctx, &sr.env)
 			return sr.getRunContext().JobContainer.Exec(sr.cmd, sr.env, "", sr.Step.WorkingDirectory)(ctx)
 		},
 	))
@@ -39,6 +79,14 @@ func (sr *stepRun) main() common.Executor {
 
 func (sr *stepRun) post() common.Executor {
 	return func(ctx context.Context) error {
+		rc := sr.getRunContext()
+		cwd, _ := os.Getwd()
+		cmd := exec.Command("docker", "cp", fmt.Sprintf("%s:%s/coverage", rc.jobContainerName(), rc.JobContainer.GetActPath()), fmt.Sprintf("%s/coverage/coverage_%s", cwd, rc.JobName))
+		err := cmd.Run()
+		if err != nil {
+			print(err.Error())
+			return nil
+		}
 		return nil
 	}
 }
@@ -78,6 +126,13 @@ func (sr *stepRun) setupShellCommandExecutor() common.Executor {
 		})(ctx)
 	}
 }
+
+//func (sr *stepRun) setupBashcov() common.Executor {
+//	return func(ctx context.Context) error {
+//		cmd :=
+//		return sr.getRunContext().JobContainer.Exec(sr.cmd, sr.env, "", sr.Step.WorkingDirectory)(ctx)
+//	}
+//}
 
 func getScriptName(rc *RunContext, step *model.Step) string {
 	scriptName := step.ID
