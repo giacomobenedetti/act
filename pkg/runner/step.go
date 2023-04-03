@@ -3,10 +3,11 @@ package runner
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"path"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/nektos/act/pkg/common"
 	"github.com/nektos/act/pkg/container"
@@ -96,12 +97,19 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 		}
 
 		runStep, err := isStepEnabled(ctx, ifExpression, step, stage)
-		// if the step is enabled to run the corresponding CFG node and conditions are displayed
-		if runStep {
-			log.Infof("\"%s - step %s\"", rc.Run.JobID, stepModel.ID)
-			f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", rc.Run.JobID, stepModel.ID)))
+		if !runStep {
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\" [style=dashed];\n", rc.Run.JobID, stepModel.ID)))
 			if previousStep != nil {
 				if stepModel.If.Value != "" {
+					// if strings.Contains(stepModel.If.Value, "failure") {
+					// 	f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, previousStep.ID)))
+					// 	if previousStep.If.Value != "" {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	} else {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	}
+					// }
 					f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, stepModel.ID, rc.Run.JobID, stepModel.ID)))
 					if previousStep.If.Value != "" {
 						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
@@ -110,6 +118,60 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
 					}
 				} else {
+					// if strings.Contains(stepModel.If.Value, "failure") {
+					// 	if previousStep.If.Value != "" {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	}
+					// 	f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// }
+					if previousStep.If.Value != "" {
+						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					}
+					f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+				}
+			} else {
+				if stepModel.If.Value != "" {
+					if rc.Run.Job().If.Value != "" && !rc.Run.Job().CondInserted {
+						f.Write([]byte(fmt.Sprintf("\"cond - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
+					} else {
+						f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
+					}
+					f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, stepModel.ID, rc.Run.JobID, stepModel.ID)))
+				} else {
+					f.Write([]byte(fmt.Sprintf("\"job - %s\" -> \"%s - step %s\";\n", rc.Run.JobID, rc.Run.JobID, stepModel.ID)))
+
+				}
+			}
+		}
+		// if the step is enabled to run the corresponding CFG node and conditions are displayed
+		if runStep {
+			log.Infof("\"%s - step %s\"", rc.Run.JobID, stepModel.ID)
+			f.Write([]byte(fmt.Sprintf("\"%s - step %s\";\n", rc.Run.JobID, stepModel.ID)))
+			if previousStep != nil {
+				if stepModel.If.Value != "" {
+					// if strings.Contains(stepModel.If.Value, "failure") {
+					// 	f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, previousStep.ID)))
+					// 	if previousStep.If.Value != "" {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	} else {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	}
+					// }
+					f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, stepModel.ID, rc.Run.JobID, stepModel.ID)))
+					if previousStep.If.Value != "" {
+						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					} else {
+						f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - cond %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
+					}
+				} else {
+					// if strings.Contains(stepModel.If.Value, "failure") {
+					// 	if previousStep.If.Value != "" {
+					// 		f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// 	}
+					// 	f.Write([]byte(fmt.Sprintf("\"%s - step %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.Prev.ID, rc.Run.JobID, previousStep.ID)))
+					// }
 					if previousStep.If.Value != "" {
 						f.Write([]byte(fmt.Sprintf("\"%s - cond %s\" -> \"%s - step %s\";\n", rc.Run.JobID, previousStep.ID, rc.Run.JobID, stepModel.ID)))
 					}
