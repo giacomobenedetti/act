@@ -2,7 +2,9 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -85,12 +87,25 @@ func (rc *RunContext) NewExpressionEvaluatorWithEnv(ctx context.Context, env map
 	if rc.JobContainer != nil {
 		ee.Runner = rc.JobContainer.GetRunnerContext(ctx)
 	}
-	return expressionEvaluator{
-		interpreter: exprparser.NewInterpeter(ee, exprparser.Config{
-			Run:        rc.Run,
-			WorkingDir: rc.Config.Workdir,
-			Context:    "job",
-		}),
+	if confFile, ok := ee.Env["confs"]; ok {
+		confFileData, _ := os.ReadFile(confFile)
+		confs := make(map[string]interface{})
+		_ = json.Unmarshal(confFileData, &confs)
+		return expressionEvaluator{
+			interpreter: exprparser.CustomNewInterpreter(ee, confs, exprparser.Config{
+				Run:        rc.Run,
+				WorkingDir: rc.Config.Workdir,
+				Context:    "job",
+			}),
+		}
+	} else {
+		return expressionEvaluator{
+			interpreter: exprparser.NewInterpeter(ee, exprparser.Config{
+				Run:        rc.Run,
+				WorkingDir: rc.Config.Workdir,
+				Context:    "job",
+			}),
+		}
 	}
 }
 

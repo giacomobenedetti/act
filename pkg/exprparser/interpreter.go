@@ -76,6 +76,18 @@ func NewInterpeter(env *EvaluationEnvironment, config Config) Interpreter {
 	}
 }
 
+func CustomNewInterpreter(env *EvaluationEnvironment, confs map[string]interface{}, config Config) Interpreter {
+	for k, v := range confs {
+		if strings.Contains(k, "github.") {
+			env.Github.SetAuto(k, v.(string))
+		}
+	}
+	return &interperterImpl{
+		env:    env,
+		config: config,
+	}
+}
+
 func (impl *interperterImpl) Evaluate(input string, defaultStatusCheck DefaultStatusCheck) (interface{}, error) {
 	input = strings.TrimPrefix(input, "${{")
 	if defaultStatusCheck != DefaultStatusCheckNone && input == "" {

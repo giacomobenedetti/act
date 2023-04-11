@@ -208,3 +208,40 @@ func (ghc *GithubContext) SetBaseAndHeadRef() {
 		}
 	}
 }
+
+func (ghc *GithubContext) SetAuto(k string, v string) {
+	switch k {
+	case "github.actor":
+		ghc.Actor = v
+		break
+	case "github.repository":
+		ghc.Repository = v
+		break
+	case "github.event_name":
+		ghc.EventName = v
+		break
+	case "github.sha":
+		ghc.Sha = v
+		break
+	case "github.ref":
+		ghc.Ref = v
+		break
+	case "github.ref_name":
+		ghc.RefName = v
+		break
+	case "github.ref_type":
+		ghc.RefType = v
+		break
+	case "github.head_ref":
+		ghc.HeadRef = v
+		break
+	case "github.base_ref":
+		ghc.BaseRef = v
+		break
+	case "github.repository_owner":
+		ghc.RepositoryOwner = v
+		break
+	default:
+		return
+	}
+}
