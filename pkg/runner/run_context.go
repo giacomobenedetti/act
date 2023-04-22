@@ -485,12 +485,18 @@ func (rc *RunContext) isEnabled(ctx context.Context) (bool, error) {
 	f, errFile := os.OpenFile("syncfile", os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
 	defer f.Close()
 
+	//if len(rc.GetEnv()) > 0 {
+	//	for _, v := range rc.GetEnv() {
+	//		ghc := rc.getGithubContext(ctx)
+	//
+	//	}
+	//}
 	runJob, err := EvalBool(ctx, rc.ExprEval, job.If.Value, exprparser.DefaultStatusCheckSuccess)
 	if job.If.Value != "" && !job.CondInserted {
 		log.Infof("[CFG] \"cond -  %s\"\n", rc.Run.JobID)
 		log.Infof("[CFG] \"cond - %s\" -> \"job -  %s\"\n", rc.Run.JobID, rc.Run.JobID)
 		f.Write([]byte(fmt.Sprintf("\"cond - %s\"\n", rc.Run.JobID)))
-		log.Infof(fmt.Sprintf("[CFG] cond: %s\n", job))
+		log.Infof(fmt.Sprintf("[CFG] cond: %s\n\t%v\n", job.If.Value, rc.getGithubContext(ctx).RepositoryOwner))
 		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"cond - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
 	} else {
 		f.Write([]byte(fmt.Sprintf("\"Workflow - %s\" -> \"job - %s\"\n", rc.Run.Workflow.Name, rc.Run.JobID)))
@@ -647,9 +653,13 @@ func (rc *RunContext) getGithubContext(ctx context.Context) *model.GithubContext
 		}
 	}
 
-	ghc.SetBaseAndHeadRef()
+	if ghc.BaseRef == "" && ghc.HeadRef == "" {
+		ghc.SetBaseAndHeadRef()
+	}
 	repoPath := rc.Config.Workdir
-	ghc.SetRepositoryAndOwner(ctx, rc.Config.GitHubInstance, rc.Config.RemoteName, repoPath)
+	if ghc.Repository == "" && ghc.RepositoryOwner == "" {
+		ghc.SetRepositoryAndOwner(ctx, rc.Config.GitHubInstance, rc.Config.RemoteName, repoPath)
+	}
 	if ghc.Ref == "" {
 		ghc.SetRef(ctx, rc.Config.DefaultBranch, repoPath)
 	}
@@ -657,7 +667,9 @@ func (rc *RunContext) getGithubContext(ctx context.Context) *model.GithubContext
 		ghc.SetSha(ctx, repoPath)
 	}
 
-	ghc.SetRefTypeAndName()
+	if ghc.RefType == "" && ghc.RefName == "" {
+		ghc.SetRefTypeAndName()
+	}
 
 	return ghc
 }

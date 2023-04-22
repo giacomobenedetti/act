@@ -89,8 +89,12 @@ func (rc *RunContext) NewExpressionEvaluatorWithEnv(ctx context.Context, env map
 	}
 	if confFile, ok := ee.Env["confs"]; ok {
 		confFileData, _ := os.ReadFile(confFile)
-		confs := make(map[string]interface{})
-		_ = json.Unmarshal(confFileData, &confs)
+		confs := make(map[string]map[string]interface{})
+		//var confs interface{}
+		err := json.Unmarshal(confFileData, &confs)
+		if err != nil {
+			panic(err)
+		}
 		return expressionEvaluator{
 			interpreter: exprparser.CustomNewInterpreter(ee, confs, exprparser.Config{
 				Run:        rc.Run,
@@ -149,12 +153,29 @@ func (rc *RunContext) NewStepExpressionEvaluator(ctx context.Context, step step)
 	if rc.JobContainer != nil {
 		ee.Runner = rc.JobContainer.GetRunnerContext(ctx)
 	}
-	return expressionEvaluator{
-		interpreter: exprparser.NewInterpeter(ee, exprparser.Config{
-			Run:        rc.Run,
-			WorkingDir: rc.Config.Workdir,
-			Context:    "step",
-		}),
+	if confFile, ok := ee.Env["confs"]; ok {
+		confFileData, _ := os.ReadFile(confFile)
+		confs := make(map[string]map[string]interface{})
+		//var confs interface{}
+		err := json.Unmarshal(confFileData, &confs)
+		if err != nil {
+			panic(err)
+		}
+		return expressionEvaluator{
+			interpreter: exprparser.CustomNewInterpreter(ee, confs, exprparser.Config{
+				Run:        rc.Run,
+				WorkingDir: rc.Config.Workdir,
+				Context:    "step",
+			}),
+		}
+	} else {
+		return expressionEvaluator{
+			interpreter: exprparser.NewInterpeter(ee, exprparser.Config{
+				Run:        rc.Run,
+				WorkingDir: rc.Config.Workdir,
+				Context:    "step",
+			}),
+		}
 	}
 }
 

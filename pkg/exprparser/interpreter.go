@@ -2,6 +2,7 @@ package exprparser
 
 import (
 	"encoding"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -76,12 +77,40 @@ func NewInterpeter(env *EvaluationEnvironment, config Config) Interpreter {
 	}
 }
 
-func CustomNewInterpreter(env *EvaluationEnvironment, confs map[string]interface{}, config Config) Interpreter {
+func (env *EvaluationEnvironment) LoadEnvironment(confs map[string]interface{}) {
+
+}
+
+func CustomNewInterpreter(env *EvaluationEnvironment, confs map[string]map[string]interface{}, config Config) Interpreter {
 	for k, v := range confs {
-		if strings.Contains(k, "github.") {
-			env.Github.SetAuto(k, v.(string))
+		switch func(value string) string {
+			//before, _, _ := strings.Cut(value, ".")
+			//return before
+			return value
+		}(k) {
+		case "github":
+			val, _ := json.Marshal(v)
+			_ = json.Unmarshal(val, &env.Github)
+			//env.Github.SetAuto(k, v.(string))
+			break
+		case "needs":
+			needs := make(map[string]Needs)
+			val, _ := json.Marshal(v)
+			_ = json.Unmarshal(val, &needs)
+			env.Needs = needs
+			break
+		case "matrix":
+			matrix := make(map[string]interface{})
+			val, _ := json.Marshal(v)
+			_ = json.Unmarshal(val, &matrix)
+			env.Matrix = matrix
+			break
 		}
 	}
+	//if strings.Contains(k, "github.") {
+	//	env.Github.SetAuto(k, v.(string))
+	//}
+
 	return &interperterImpl{
 		env:    env,
 		config: config,
