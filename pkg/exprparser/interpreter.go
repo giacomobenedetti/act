@@ -91,6 +91,7 @@ func CustomNewInterpreter(env *EvaluationEnvironment, confs map[string]map[strin
 		case "github":
 			val, _ := json.Marshal(v)
 			_ = json.Unmarshal(val, &env.Github)
+			fmt.Printf("::found config:: %v\n", env.Github)
 			//env.Github.SetAuto(k, v.(string))
 			break
 		case "needs":

@@ -227,8 +227,8 @@ func (rc *RunContext) startJobContainer() common.Executor {
 			return fmt.Errorf("failed to handle credentials: %s", err)
 		}
 
-		logger.Infof("\U0001f680  Start image=%s", image)
 		name := rc.jobContainerName()
+    logger.Infof("\U0001f680  Start image=%s name::%s", image, name)
 
 		envList := make([]string, 0)
 
@@ -252,7 +252,7 @@ func (rc *RunContext) startJobContainer() common.Executor {
 
 		rc.JobContainer = container.NewContainer(&container.NewContainerInput{
 			Cmd:         nil,
-			Entrypoint:  []string{"tail", "-f", "/dev/null"},
+			// Entrypoint:  []string{"tail", "-f", "/dev/null"},
 			WorkingDir:  ext.ToContainerPath(rc.Config.Workdir),
 			Image:       image,
 			Username:    username,
