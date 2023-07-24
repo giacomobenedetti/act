@@ -121,7 +121,7 @@ nix run nixpkgs#act
 Act can be installed as a [GitHub CLI](https://cli.github.com/) extension:
 
 ```sh
-gh extension install nektos/gh-act
+gh extension install https://github.com/nektos/gh-act
 ```
 
 ## Other install options
@@ -164,6 +164,9 @@ act pull_request
 # Run a specific job:
 act -j test
 
+# Collect artifacts to the /tmp/artifacts folder:
+act --artifact-server-path /tmp/artifacts
+
 # Run a job in a specific workflow (useful if you have duplicate job names)
 act -j lint -W .github/workflows/checks.yml
 
@@ -187,6 +190,12 @@ If your workflow depends on this token, you need to create a [personal access to
 
 ```bash
 act -s GITHUB_TOKEN=[insert token or leave blank and omit equals for secure input]
+```
+
+If [GitHub CLI](https://cli.github.com/) is installed, the [`gh auth token`](https://cli.github.com/manual/gh_auth_token) command can be used to automatically pass the token to act
+
+```bash
+act -s GITHUB_TOKEN="$(gh auth token)"
 ```
 
 **WARNING**: `GITHUB_TOKEN` will be logged in shell history if not inserted through secure input or (depending on your shell config) the command is prefixed with a whitespace.
@@ -262,6 +271,15 @@ If you need an environment that works just like the corresponding GitHub runner 
 :warning: :elephant: `*** WARNING - this image is >18GB 😱***`
 
 - [`catthehacker/ubuntu:full-*`](https://github.com/catthehacker/docker_images/pkgs/container/ubuntu) - built from Packer template provided by GitHub, see [catthehacker/virtual-environments-fork](https://github.com/catthehacker/virtual-environments-fork) or [catthehacker/docker_images](https://github.com/catthehacker/docker_images) for more information
+
+## Using local runner images
+
+The `--pull` flag is set to true by default due to a breaking on older default docker images. This would pull the docker image everytime act is executed.
+
+Set `--pull` to false if a local docker image is needed
+```sh
+  act --pull=false
+```
 
 ## Use an alternative runner image
 
@@ -451,7 +469,7 @@ Want to contribute to act? Awesome! Check out the [contributing guidelines](CONT
 
 ## Manually building from source
 
-- Install Go tools 1.18+ - (<https://golang.org/doc/install>)
+- Install Go tools 1.20+ - (<https://golang.org/doc/install>)
 - Clone this repo `git clone git@github.com:nektos/act.git`
 - Run unit tests with `make test`
 - Build and install: `make install`

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -87,7 +89,6 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			Outputs:    make(map[string]string),
 		}
 		if stage == stepStageMain {
-
 			rc.StepResults[rc.CurrentStep] = stepResult
 		}
 
@@ -259,7 +260,9 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 			Mode: 0o666,
 		})(ctx)
 
-		err = executor(ctx)
+		timeoutctx, cancelTimeOut := evaluateStepTimeout(ctx, rc.ExprEval, stepModel)
+		defer cancelTimeOut()
+		err = executor(timeoutctx)
 
 		if err == nil {
 			logger.WithField("stepResult", stepResult.Outcome).Infof("  \u2705  Success - %s %s", stage, stepString)
@@ -307,12 +310,22 @@ func runStepExecutor(step step, stage stepStage, executor common.Executor) commo
 	}
 }
 
+func evaluateStepTimeout(ctx context.Context, exprEval ExpressionEvaluator, stepModel *model.Step) (context.Context, context.CancelFunc) {
+	timeout := exprEval.Interpolate(ctx, stepModel.TimeoutMinutes)
+	if timeout != "" {
+		if timeOutMinutes, err := strconv.ParseInt(timeout, 10, 64); err == nil {
+			return context.WithTimeout(ctx, time.Duration(timeOutMinutes)*time.Minute)
+		}
+	}
+	return ctx, func() {}
+}
+
 func setupEnv(ctx context.Context, step step) error {
 	rc := step.getRunContext()
 
 	mergeEnv(ctx, step)
 	// merge step env last, since it should not be overwritten
-	mergeIntoMap(step.getEnv(), step.getStepModel().GetEnv())
+	mergeIntoMap(step, step.getEnv(), step.getStepModel().GetEnv())
 
 	exprEval := rc.NewExpressionEvaluator(ctx)
 	for k, v := range *step.getEnv() {
@@ -341,9 +354,9 @@ func mergeEnv(ctx context.Context, step step) {
 
 	c := job.Container()
 	if c != nil {
-		mergeIntoMap(env, rc.GetEnv(), c.Env)
+		mergeIntoMap(step, env, rc.GetEnv(), c.Env)
 	} else {
-		mergeIntoMap(env, rc.GetEnv())
+		mergeIntoMap(step, env, rc.GetEnv())
 	}
 
 	rc.withGithubEnv(ctx, step.getGithubContext(ctx), *env)
@@ -368,7 +381,7 @@ func isStepEnabled(ctx context.Context, expr string, step step, stage stepStage)
 	return runStep, nil
 }
 
-func isContinueOnError(ctx context.Context, expr string, step step, stage stepStage) (bool, error) {
+func isContinueOnError(ctx context.Context, expr string, step step, _ stepStage) (bool, error) {
 	// https://github.com/github/docs/blob/3ae84420bd10997bb5f35f629ebb7160fe776eae/content/actions/reference/workflow-syntax-for-github-actions.md?plain=true#L962
 	if len(strings.TrimSpace(expr)) == 0 {
 		return false, nil
@@ -384,10 +397,38 @@ func isContinueOnError(ctx context.Context, expr string, step step, stage stepSt
 	return continueOnError, nil
 }
 
-func mergeIntoMap(target *map[string]string, maps ...map[string]string) {
+func mergeIntoMap(step step, target *map[string]string, maps ...map[string]string) {
+	if rc := step.getRunContext(); rc != nil && rc.JobContainer != nil && rc.JobContainer.IsEnvironmentCaseInsensitive() {
+		mergeIntoMapCaseInsensitive(*target, maps...)
+	} else {
+		mergeIntoMapCaseSensitive(*target, maps...)
+	}
+}
+
+func mergeIntoMapCaseSensitive(target map[string]string, maps ...map[string]string) {
 	for _, m := range maps {
 		for k, v := range m {
-			(*target)[k] = v
+			target[k] = v
+		}
+	}
+}
+
+func mergeIntoMapCaseInsensitive(target map[string]string, maps ...map[string]string) {
+	foldKeys := make(map[string]string, len(target))
+	for k := range target {
+		foldKeys[strings.ToLower(k)] = k
+	}
+	toKey := func(s string) string {
+		foldKey := strings.ToLower(s)
+		if k, ok := foldKeys[foldKey]; ok {
+			return k
+		}
+		foldKeys[strings.ToLower(foldKey)] = s
+		return s
+	}
+	for _, m := range maps {
+		for k, v := range m {
+			target[toKey(k)] = v
 		}
 	}
 }

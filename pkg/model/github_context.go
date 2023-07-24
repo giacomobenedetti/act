@@ -36,6 +36,9 @@ type GithubContext struct {
 	RetentionDays    string                 `json:"retention_days"`
 	RunnerPerflog    string                 `json:"runner_perflog"`
 	RunnerTrackingID string                 `json:"runner_tracking_id"`
+	ServerURL        string                 `json:"server_url"`
+	APIURL           string                 `json:"api_url"`
+	GraphQLURL       string                 `json:"graphql_url"`
 }
 
 func asString(v interface{}) string {
@@ -206,42 +209,5 @@ func (ghc *GithubContext) SetBaseAndHeadRef() {
 		if ghc.HeadRef == "" {
 			ghc.HeadRef = asString(nestedMapLookup(ghc.Event, "pull_request", "head", "ref"))
 		}
-	}
-}
-
-func (ghc *GithubContext) SetAuto(k string, v string) {
-	switch k {
-	case "github.actor":
-		ghc.Actor = v
-		break
-	case "github.repository":
-		ghc.Repository = v
-		break
-	case "github.event_name":
-		ghc.EventName = v
-		break
-	case "github.sha":
-		ghc.Sha = v
-		break
-	case "github.ref":
-		ghc.Ref = v
-		break
-	case "github.ref_name":
-		ghc.RefName = v
-		break
-	case "github.ref_type":
-		ghc.RefType = v
-		break
-	case "github.head_ref":
-		ghc.HeadRef = v
-		break
-	case "github.base_ref":
-		ghc.BaseRef = v
-		break
-	case "github.repository_owner":
-		ghc.RepositoryOwner = v
-		break
-	default:
-		return
 	}
 }

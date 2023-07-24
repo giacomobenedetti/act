@@ -79,6 +79,7 @@ func (rc *RunContext) NewExpressionEvaluatorWithEnv(ctx context.Context, env map
 		// but required to interpolate/evaluate the step outputs on the job
 		Steps:    rc.getStepsContext(),
 		Secrets:  getWorkflowSecrets(ctx, rc),
+		Vars:     getWorkflowVars(ctx, rc),
 		Strategy: strategy,
 		Matrix:   rc.Matrix,
 		Needs:    using,
@@ -143,6 +144,7 @@ func (rc *RunContext) NewStepExpressionEvaluator(ctx context.Context, step step)
 		Job:      rc.getJobContext(),
 		Steps:    rc.getStepsContext(),
 		Secrets:  getWorkflowSecrets(ctx, rc),
+		Vars:     getWorkflowVars(ctx, rc),
 		Strategy: strategy,
 		Matrix:   rc.Matrix,
 		Needs:    using,
@@ -194,67 +196,117 @@ func (ee expressionEvaluator) evaluate(ctx context.Context, in string, defaultSt
 	return evaluated, err
 }
 
-func (ee expressionEvaluator) evaluateScalarYamlNode(ctx context.Context, node *yaml.Node) error {
+func (ee expressionEvaluator) evaluateScalarYamlNode(ctx context.Context, node *yaml.Node) (*yaml.Node, error) {
 	var in string
 	if err := node.Decode(&in); err != nil {
-		return err
+		return nil, err
 	}
 	if !strings.Contains(in, "${{") || !strings.Contains(in, "}}") {
-		return nil
+		return nil, nil
 	}
 	expr, _ := rewriteSubExpression(ctx, in, false)
 	res, err := ee.evaluate(ctx, expr, exprparser.DefaultStatusCheckNone)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return node.Encode(res)
+	ret := &yaml.Node{}
+	if err := ret.Encode(res); err != nil {
+		return nil, err
+	}
+	return ret, err
 }
 
-func (ee expressionEvaluator) evaluateMappingYamlNode(ctx context.Context, node *yaml.Node) error {
+func (ee expressionEvaluator) evaluateMappingYamlNode(ctx context.Context, node *yaml.Node) (*yaml.Node, error) {
+	var ret *yaml.Node
 	// GitHub has this undocumented feature to merge maps, called insert directive
 	insertDirective := regexp.MustCompile(`\${{\s*insert\s*}}`)
-	for i := 0; i < len(node.Content)/2; {
+	for i := 0; i < len(node.Content)/2; i++ {
+		changed := func() error {
+			if ret == nil {
+				ret = &yaml.Node{}
+				if err := ret.Encode(node); err != nil {
+					return err
+				}
+				ret.Content = ret.Content[:i*2]
+			}
+			return nil
+		}
 		k := node.Content[i*2]
 		v := node.Content[i*2+1]
-		if err := ee.EvaluateYamlNode(ctx, v); err != nil {
-			return err
+		ev, err := ee.evaluateYamlNodeInternal(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		if ev != nil {
+			if err := changed(); err != nil {
+				return nil, err
+			}
+		} else {
+			ev = v
 		}
 		var sk string
 		// Merge the nested map of the insert directive
 		if k.Decode(&sk) == nil && insertDirective.MatchString(sk) {
-			node.Content = append(append(node.Content[:i*2], v.Content...), node.Content[(i+1)*2:]...)
-			i += len(v.Content) / 2
-		} else {
-			if err := ee.EvaluateYamlNode(ctx, k); err != nil {
-				return err
+			if ev.Kind != yaml.MappingNode {
+				return nil, fmt.Errorf("failed to insert node %v into mapping %v unexpected type %v expected MappingNode", ev, node, ev.Kind)
 			}
-			i++
+			if err := changed(); err != nil {
+				return nil, err
+			}
+			ret.Content = append(ret.Content, ev.Content...)
+		} else {
+			ek, err := ee.evaluateYamlNodeInternal(ctx, k)
+			if err != nil {
+				return nil, err
+			}
+			if ek != nil {
+				if err := changed(); err != nil {
+					return nil, err
+				}
+			} else {
+				ek = k
+			}
+			if ret != nil {
+				ret.Content = append(ret.Content, ek, ev)
+			}
 		}
 	}
-	return nil
+	return ret, nil
 }
 
-func (ee expressionEvaluator) evaluateSequenceYamlNode(ctx context.Context, node *yaml.Node) error {
-	for i := 0; i < len(node.Content); {
+func (ee expressionEvaluator) evaluateSequenceYamlNode(ctx context.Context, node *yaml.Node) (*yaml.Node, error) {
+	var ret *yaml.Node
+	for i := 0; i < len(node.Content); i++ {
 		v := node.Content[i]
 		// Preserve nested sequences
 		wasseq := v.Kind == yaml.SequenceNode
-		if err := ee.EvaluateYamlNode(ctx, v); err != nil {
-			return err
+		ev, err := ee.evaluateYamlNodeInternal(ctx, v)
+		if err != nil {
+			return nil, err
 		}
-		// GitHub has this undocumented feature to merge sequences / arrays
-		// We have a nested sequence via evaluation, merge the arrays
-		if v.Kind == yaml.SequenceNode && !wasseq {
-			node.Content = append(append(node.Content[:i], v.Content...), node.Content[i+1:]...)
-			i += len(v.Content)
-		} else {
-			i++
+		if ev != nil {
+			if ret == nil {
+				ret = &yaml.Node{}
+				if err := ret.Encode(node); err != nil {
+					return nil, err
+				}
+				ret.Content = ret.Content[:i]
+			}
+			// GitHub has this undocumented feature to merge sequences / arrays
+			// We have a nested sequence via evaluation, merge the arrays
+			if ev.Kind == yaml.SequenceNode && !wasseq {
+				ret.Content = append(ret.Content, ev.Content...)
+			} else {
+				ret.Content = append(ret.Content, ev)
+			}
+		} else if ret != nil {
+			ret.Content = append(ret.Content, v)
 		}
 	}
-	return nil
+	return ret, nil
 }
 
-func (ee expressionEvaluator) EvaluateYamlNode(ctx context.Context, node *yaml.Node) error {
+func (ee expressionEvaluator) evaluateYamlNodeInternal(ctx context.Context, node *yaml.Node) (*yaml.Node, error) {
 	switch node.Kind {
 	case yaml.ScalarNode:
 		return ee.evaluateScalarYamlNode(ctx, node)
@@ -263,8 +315,19 @@ func (ee expressionEvaluator) EvaluateYamlNode(ctx context.Context, node *yaml.N
 	case yaml.SequenceNode:
 		return ee.evaluateSequenceYamlNode(ctx, node)
 	default:
-		return nil
+		return nil, nil
 	}
+}
+
+func (ee expressionEvaluator) EvaluateYamlNode(ctx context.Context, node *yaml.Node) error {
+	ret, err := ee.evaluateYamlNodeInternal(ctx, node)
+	if err != nil {
+		return err
+	}
+	if ret != nil {
+		return ret.Decode(node)
+	}
+	return nil
 }
 
 func (ee expressionEvaluator) Interpolate(ctx context.Context, in string) string {
@@ -370,6 +433,7 @@ func rewriteSubExpression(ctx context.Context, in string, forceFormat bool) (str
 	return out, nil
 }
 
+//nolint:gocyclo
 func getEvaluatorInputs(ctx context.Context, rc *RunContext, step step, ghc *model.GithubContext) map[string]interface{} {
 	inputs := map[string]interface{}{}
 
@@ -405,6 +469,22 @@ func getEvaluatorInputs(ctx context.Context, rc *RunContext, step step, ghc *mod
 		}
 	}
 
+	if ghc.EventName == "workflow_call" {
+		config := rc.Run.Workflow.WorkflowCallConfig()
+		if config != nil && config.Inputs != nil {
+			for k, v := range config.Inputs {
+				value := nestedMapLookup(ghc.Event, "inputs", k)
+				if value == nil {
+					value = v.Default
+				}
+				if v.Type == "boolean" {
+					inputs[k] = value == "true"
+				} else {
+					inputs[k] = value
+				}
+			}
+		}
+	}
 	return inputs
 }
 
@@ -457,4 +537,8 @@ func getWorkflowSecrets(ctx context.Context, rc *RunContext) map[string]string {
 	}
 
 	return rc.Config.Secrets
+}
+
+func getWorkflowVars(_ context.Context, rc *RunContext) map[string]string {
+	return rc.Config.Vars
 }

@@ -182,7 +182,7 @@ func runActionImpl(step actionStep, actionDir string, remoteAction *remoteAction
 	}
 }
 
-func setupActionEnv(ctx context.Context, step actionStep, remoteAction *remoteAction) error {
+func setupActionEnv(ctx context.Context, step actionStep, _ *remoteAction) error {
 	rc := step.getRunContext()
 
 	// A few fields in the environment (e.g. GITHUB_ACTION_REPOSITORY)
@@ -319,13 +319,13 @@ func evalDockerArgs(ctx context.Context, step step, action *model.Action, cmd *[
 			inputs[k] = eval.Interpolate(ctx, v)
 		}
 	}
-	mergeIntoMap(step.getEnv(), inputs)
+	mergeIntoMap(step, step.getEnv(), inputs)
 
 	stepEE := rc.NewStepExpressionEvaluator(ctx, step)
 	for i, v := range *cmd {
 		(*cmd)[i] = stepEE.Interpolate(ctx, v)
 	}
-	mergeIntoMap(step.getEnv(), action.Runs.Env)
+	mergeIntoMap(step, step.getEnv(), action.Runs.Env)
 
 	ee := rc.NewStepExpressionEvaluator(ctx, step)
 	for k, v := range *step.getEnv() {

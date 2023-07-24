@@ -147,20 +147,81 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo
-  remote-reusable-workflow:
-    runs-on: ubuntu-latest
-    uses: remote/repo/.github/workflows/workflow.yml@main
-  local-reusable-workflow:
-    runs-on: ubuntu-latest
-    uses: ./.github/workflows/workflow.yml
+  remote-reusable-workflow-yml:
+    uses: remote/repo/some/path/to/workflow.yml@main
+  remote-reusable-workflow-yaml:
+    uses: remote/repo/some/path/to/workflow.yaml@main
+  remote-reusable-workflow-custom-path:
+    uses: remote/repo/path/to/workflow.yml@main
+  local-reusable-workflow-yml:
+    uses: ./some/path/to/workflow.yml
+  local-reusable-workflow-yaml:
+    uses: ./some/path/to/workflow.yaml
 `
 
 	workflow, err := ReadWorkflow(strings.NewReader(yaml))
 	assert.NoError(t, err, "read workflow should succeed")
-	assert.Len(t, workflow.Jobs, 3)
-	assert.Equal(t, workflow.Jobs["default-job"].Type(), JobTypeDefault)
-	assert.Equal(t, workflow.Jobs["remote-reusable-workflow"].Type(), JobTypeReusableWorkflowRemote)
-	assert.Equal(t, workflow.Jobs["local-reusable-workflow"].Type(), JobTypeReusableWorkflowLocal)
+	assert.Len(t, workflow.Jobs, 6)
+
+	jobType, err := workflow.Jobs["default-job"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeDefault, jobType)
+
+	jobType, err = workflow.Jobs["remote-reusable-workflow-yml"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeReusableWorkflowRemote, jobType)
+
+	jobType, err = workflow.Jobs["remote-reusable-workflow-yaml"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeReusableWorkflowRemote, jobType)
+
+	jobType, err = workflow.Jobs["remote-reusable-workflow-custom-path"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeReusableWorkflowRemote, jobType)
+
+	jobType, err = workflow.Jobs["local-reusable-workflow-yml"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeReusableWorkflowLocal, jobType)
+
+	jobType, err = workflow.Jobs["local-reusable-workflow-yaml"].Type()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, JobTypeReusableWorkflowLocal, jobType)
+}
+
+func TestReadWorkflow_JobTypes_InvalidPath(t *testing.T) {
+	yaml := `
+name: invalid job definition
+
+jobs:
+  remote-reusable-workflow-missing-version:
+    uses: remote/repo/some/path/to/workflow.yml
+  remote-reusable-workflow-bad-extension:
+    uses: remote/repo/some/path/to/workflow.json
+  local-reusable-workflow-bad-extension:
+    uses: ./some/path/to/workflow.json
+  local-reusable-workflow-bad-path:
+    uses: some/path/to/workflow.yaml
+`
+
+	workflow, err := ReadWorkflow(strings.NewReader(yaml))
+	assert.NoError(t, err, "read workflow should succeed")
+	assert.Len(t, workflow.Jobs, 4)
+
+	jobType, err := workflow.Jobs["remote-reusable-workflow-missing-version"].Type()
+	assert.Equal(t, JobTypeInvalid, jobType)
+	assert.NotEqual(t, nil, err)
+
+	jobType, err = workflow.Jobs["remote-reusable-workflow-bad-extension"].Type()
+	assert.Equal(t, JobTypeInvalid, jobType)
+	assert.NotEqual(t, nil, err)
+
+	jobType, err = workflow.Jobs["local-reusable-workflow-bad-extension"].Type()
+	assert.Equal(t, JobTypeInvalid, jobType)
+	assert.NotEqual(t, nil, err)
+
+	jobType, err = workflow.Jobs["local-reusable-workflow-bad-path"].Type()
+	assert.Equal(t, JobTypeInvalid, jobType)
+	assert.NotEqual(t, nil, err)
 }
 
 func TestReadWorkflow_StepsTypes(t *testing.T) {
@@ -250,25 +311,33 @@ func TestReadWorkflow_Strategy(t *testing.T) {
 	wf := p.Stages[0].Runs[0].Workflow
 
 	job := wf.Jobs["strategy-only-max-parallel"]
-	assert.Equal(t, job.GetMatrixes(), []map[string]interface{}{{}})
+	matrixes, err := job.GetMatrixes()
+	assert.NoError(t, err)
+	assert.Equal(t, matrixes, []map[string]interface{}{{}})
 	assert.Equal(t, job.Matrix(), map[string][]interface{}(nil))
 	assert.Equal(t, job.Strategy.MaxParallel, 2)
 	assert.Equal(t, job.Strategy.FailFast, true)
 
 	job = wf.Jobs["strategy-only-fail-fast"]
-	assert.Equal(t, job.GetMatrixes(), []map[string]interface{}{{}})
+	matrixes, err = job.GetMatrixes()
+	assert.NoError(t, err)
+	assert.Equal(t, matrixes, []map[string]interface{}{{}})
 	assert.Equal(t, job.Matrix(), map[string][]interface{}(nil))
 	assert.Equal(t, job.Strategy.MaxParallel, 4)
 	assert.Equal(t, job.Strategy.FailFast, false)
 
 	job = wf.Jobs["strategy-no-matrix"]
-	assert.Equal(t, job.GetMatrixes(), []map[string]interface{}{{}})
+	matrixes, err = job.GetMatrixes()
+	assert.NoError(t, err)
+	assert.Equal(t, matrixes, []map[string]interface{}{{}})
 	assert.Equal(t, job.Matrix(), map[string][]interface{}(nil))
 	assert.Equal(t, job.Strategy.MaxParallel, 2)
 	assert.Equal(t, job.Strategy.FailFast, false)
 
 	job = wf.Jobs["strategy-all"]
-	assert.Equal(t, job.GetMatrixes(),
+	matrixes, err = job.GetMatrixes()
+	assert.NoError(t, err)
+	assert.Equal(t, matrixes,
 		[]map[string]interface{}{
 			{"datacenter": "site-c", "node-version": "14.x", "site": "staging"},
 			{"datacenter": "site-c", "node-version": "16.x", "site": "staging"},
